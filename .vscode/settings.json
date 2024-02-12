@@ -14,7 +14,9 @@
     "idf.pythonBinPath": "/home/acepe/.espressif/python_env/idf5.1_py3.11_env/bin/python",
     "idf.toolsPath": "/home/acepe/.espressif",
     "files.associations": {
-        "esp_log.h": "c"
+        "esp_log.h": "c",
+        "i2c.h": "c",
+        "esp_types.h": "c"
     },
     "idf.flashType": "UART"
 }
