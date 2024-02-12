@@ -106,34 +106,39 @@ static void app_send_hid_demo(uint8_t *keycode) {
   vTaskDelay(pdMS_TO_TICKS(10));
 }
 
-/**
- * @brief Task to process I2C slave events
- */
+static void app_send_hid_report(hid_keyboard_report_t *report) {
+  ESP_LOGI(TAG, "Sending Keyboard report");
+
+  tud_hid_report(HID_ITF_PROTOCOL_KEYBOARD, report, sizeof(hid_keyboard_report_t));
+  vTaskDelay(pdMS_TO_TICKS(10));
+}
+
 static void i2c_slave_task(void *arg) {
-  ESP_LOGI(TAG, "Task started");
+    ESP_LOGI(TAG, "Task started");
 
-  uint8_t *data = (uint8_t *)malloc(I2C_SLAVE_RX_BUF_LEN);
-  if (data == NULL) {
-    ESP_LOGE(TAG, "Failed to allocate memory for receive buffer");
-    vTaskDelete(NULL);
-  }
+    hid_keyboard_report_t report;
+    int size = 0;
 
-  int size = 0;
-  while (1) {
-    size = i2c_slave_read_buffer(I2C_SLAVE_NUM, data, I2C_SLAVE_RX_BUF_LEN,
-                                 10 / portTICK_PERIOD_MS);
-    if (size > 0) {
-      ESP_LOGI(TAG, "Received data: %d", size);
-      ESP_LOG_BUFFER_HEX(TAG, data, size);
+    while (1) {
+        size = i2c_slave_read_buffer(I2C_SLAVE_NUM, (uint8_t*)&report, sizeof(hid_keyboard_report_t), 10 / portTICK_PERIOD_MS);
+        if (size > 0) {
+            ESP_LOGI(TAG, "Received HID report");
+            ESP_LOGI(TAG, "Modifiers: %02X", report.modifier);
+            ESP_LOGI(TAG, "Keys:");
+            ESP_LOG_BUFFER_HEX(TAG, report.keycode, sizeof(report.keycode));
 
-      if (tud_mounted()) {
-        app_send_hid_demo(data);
-      }
+            for (int i = 0; i < 10; i++) {
+                if (report.keycode[i] != 0) {
+                    ESP_LOGI(TAG, "%c", report.keycode[i]);
+                }
+            }
+
+            // Process the received HID report            
+            if (tud_mounted()) {
+                app_send_hid_report(&report);
+            }
+        }
     }
-  }
-
-  free(data);
-  vTaskDelete(NULL);
 }
 
 void initI2C() {
