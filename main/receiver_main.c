@@ -3,10 +3,12 @@
 
 #include "class/hid/hid_device.h"
 #include "driver/i2c.h"
-#include "esp_log.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
 #include "tinyusb.h"
+#include "led_strip.h"
 
 #define I2C_SLAVE_SCL_IO 2      /*!< gpio number for I2C slave clock */
 #define I2C_SLAVE_SDA_IO 1      /*!< gpio number for I2C slave data  */
@@ -16,8 +18,44 @@
   1024                            /*!< I2C slave buffer size for receive \
                                      data*/
 #define I2C_SLAVE_TX_BUF_LEN 1024 /*!< I2C slave buffer size for send data */
+#define BLINK_GPIO 48
 
 static const char *TAG = "I2C_SLAVE";
+
+static led_strip_handle_t led_strip;
+
+static void blink_led(uint8_t state)
+{
+    /* If the addressable LED is enabled */
+    if (state) {
+        ESP_LOGI(TAG, "LED on");
+        /* Set the LED pixel using RGB from 0 (0%) to 255 (100%) for each color */
+        led_strip_set_pixel(led_strip, 0, 64, 0, 64);
+        /* Refresh the strip to send data */
+        led_strip_refresh(led_strip);
+    } else {
+      ESP_LOGI(TAG, "LED off");
+        /* Set all LED off to clear all pixels */
+        led_strip_clear(led_strip);
+    }
+}
+
+static void init_led(void)
+{
+    ESP_LOGI(TAG, "On board adressable LED initialisation");
+    /* LED strip initialization with the GPIO and pixels number*/
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = BLINK_GPIO,
+        .max_leds = 1, // one LED on board
+    };
+    led_strip_rmt_config_t rmt_config = {
+        .resolution_hz = 10 * 1000 * 1000, // 10MHz
+    };
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+    /* Set all LED off to clear all pixels */
+    led_strip_clear(led_strip);
+    ESP_LOGI(TAG, "On board adressable LED initialisation DONE");
+}
 
 /************* TinyUSB descriptors ****************/
 
@@ -135,13 +173,15 @@ static void i2c_slave_task(void *arg) {
 
             // Process the received HID report            
             if (tud_mounted()) {
+                blink_led(1);
                 app_send_hid_report(&report);
+                blink_led(0);
             }
         }
     }
 }
 
-void initI2C() {
+void init_i2c() {
   i2c_config_t conf = {
       .mode = I2C_MODE_SLAVE,
       .sda_io_num = I2C_SLAVE_SDA_IO,
@@ -155,7 +195,7 @@ void initI2C() {
       I2C_SLAVE_NUM, conf.mode, I2C_SLAVE_RX_BUF_LEN, I2C_SLAVE_TX_BUF_LEN, 0));
 }
 
-void initUSB() {
+void init_usb() {
   ESP_LOGI(TAG, "USB initialization");
   const tinyusb_config_t tusb_cfg = {
       .device_descriptor = NULL,
@@ -171,8 +211,13 @@ void initUSB() {
 }
 
 void app_main() {
-  initUSB();
-  initI2C();
+  init_usb();
+  init_i2c();
+  init_led();
+  
+  blink_led(1);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+  blink_led(0);
 
   xTaskCreate(i2c_slave_task, "i2c_slave_task", 4096, NULL, 10, NULL);
 }
